@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// There is no User table here on purpose: Clerk is the source of truth for
+// accounts. We only ever store Clerk's userId as a foreign key string, so a
+// letter is only ever readable/writable by the userId that created it
+// (enforced in every API route and server component, not just by the schema).
+model Letter {
+  id        String   @id @default(cuid())
+  userId    String
+
+  recipient String
+  title     String
+  content   String   @db.Text
+  mood      String
+  date      DateTime
+
+  favorite  Boolean  @default(false)
+  isDraft   Boolean  @default(false)
+
+  // Null = not shared. Set = a secret, unguessable token that grants
+  // read-only public access at /shared/[shareId]. Clearing it revokes access.
+  shareId   String?  @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, favorite])
+  @@index([userId, mood])
+}
