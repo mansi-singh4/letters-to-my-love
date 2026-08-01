@@ -9,7 +9,7 @@ import { MOODS, MoodKey, stripHtml } from "@/lib/moods";
 import { showToast } from "@/lib/toast";
 import { burstConfetti } from "@/lib/confetti";
 import { burstHearts } from "@/lib/hearts";
-import { PendingPhoto } from "@/lib/media";
+import { PendingMedia } from "@/lib/media";
 
 type LetterInput = {
   id?: string;
@@ -20,7 +20,7 @@ type LetterInput = {
   content: string;
   status?: "DRAFT" | "SCHEDULED" | "SENT" | "READ";
   scheduledFor?: string | null;
-  media?: { id: string; url: string; caption: string | null }[];
+  media?: { id: string; url: string; caption: string | null; type: "IMAGE" | "AUDIO" | "VIDEO"; duration: number | null }[];
 };
 
 const DRAFT_KEY = "letters-draft-new";
@@ -65,14 +65,16 @@ export default function LetterForm({
   const [deliverMode, setDeliverMode] = useState<"now" | "schedule">(initial?.scheduledFor ? "schedule" : "now");
   const [scheduledLocal, setScheduledLocal] = useState(toDatetimeLocal(initial?.scheduledFor));
 
-  const [photos, setPhotos] = useState<PendingPhoto[]>(
+  const [media, setMedia] = useState<PendingMedia[]>(
     () =>
       initial?.media?.map((m) => ({
         localId: `existing-${m.id}`,
         existingId: m.id,
+        kind: m.type,
         url: m.url,
         previewUrl: m.url,
         caption: m.caption ?? "",
+        duration: m.duration ?? undefined,
         status: "done" as const,
       })) ?? []
   );
@@ -109,17 +111,17 @@ export default function LetterForm({
       showToast("Write a little something first");
       return null;
     }
-    if (photos.some((p) => p.status === "uploading")) {
-      showToast("Hang on \u2014 still uploading your photos");
+    if (media.some((m) => m.status === "uploading")) {
+      showToast("Hang on \u2014 still uploading your memories");
       return null;
     }
 
-    const newMedia = photos
-      .filter((p) => p.status === "done" && !p.existingId && p.url && p.publicId)
-      .map((p) => ({ url: p.url, publicId: p.publicId, caption: p.caption || null, type: "IMAGE" as const }));
+    const newMedia = media
+      .filter((m) => m.status === "done" && !m.existingId && m.url && m.publicId)
+      .map((m) => ({ url: m.url, publicId: m.publicId, caption: m.caption || null, type: m.kind, duration: m.duration ?? null }));
 
     const originalIds = initial?.media?.map((m) => m.id) ?? [];
-    const keptExistingIds = new Set(photos.filter((p) => p.existingId).map((p) => p.existingId));
+    const keptExistingIds = new Set(media.filter((m) => m.existingId).map((m) => m.existingId));
     const removeMediaIds = originalIds.filter((id) => !keptExistingIds.has(id));
 
     const payload = { recipient, title, date, mood, content, newMedia, removeMediaIds };
@@ -180,7 +182,7 @@ export default function LetterForm({
           showToast(`Scheduled for ${new Date(scheduledLocal).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`);
         } else {
           burstHearts();
-          showToast(`Sent to ${partnerName} \u2764\uFE0F`);
+          showToast("Your letter is on its way \uD83D\uDC8C");
           if (isFirstLetter) burstConfetti();
         }
         router.push(`/letters/${id}`);
@@ -244,7 +246,7 @@ export default function LetterForm({
         {!isEdit && <span>Draft auto-saves as you type</span>}
       </div>
 
-      <MediaUploader photos={photos} onChange={setPhotos} />
+      <MediaUploader media={media} onChange={setMedia} />
 
       <label style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.6px", color: "var(--ink-soft)", fontWeight: 600, marginTop: 18, display: "block" }}>
         Deliver
@@ -272,10 +274,16 @@ export default function LetterForm({
         <button className="btn btn-ghost" type="button" onClick={handleClear}>
           Clear
         </button>
-        <button className="btn btn-ghost" type="button" onClick={handleSaveDraft} disabled={savingDraft || sending}>
+        <button className="btn btn-ghost" type="button" onClick={handleSaveDraft} disabled={savingDraft || sending || !plain}>
           Save Draft
         </button>
-        <button className="save-heart" type="button" onClick={handleSend} disabled={savingDraft || sending} title={deliverMode === "schedule" ? "Schedule letter" : "Send letter"}>
+        <button
+          className="save-heart"
+          type="button"
+          onClick={handleSend}
+          disabled={savingDraft || sending || !plain}
+          title={deliverMode === "schedule" ? "Schedule letter" : "Send letter"}
+        >
           <span>&#10084;</span>
         </button>
       </div>

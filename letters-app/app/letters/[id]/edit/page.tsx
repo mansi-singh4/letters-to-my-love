@@ -31,7 +31,7 @@ export default async function EditLetterPage({ params }: { params: { id: string 
           content: letter.content,
           status: letter.status,
           scheduledFor: letter.scheduledFor ? letter.scheduledFor.toISOString() : null,
-          media: letter.media.map((m) => ({ id: m.id, url: m.url, caption: m.caption })),
+          media: letter.media.map((m) => ({ id: m.id, url: m.url, caption: m.caption, type: m.type, duration: m.duration })),
         }}
       />
     </section>

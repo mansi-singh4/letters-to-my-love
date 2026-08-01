@@ -17,21 +17,35 @@ export async function POST() {
   if (!coupleId) return NextResponse.json({ error: "No Couple Space yet" }, { status: 403 });
 
   if (!cloudinaryConfigured()) {
+    const missing = [
+      !process.env.CLOUDINARY_CLOUD_NAME && "CLOUDINARY_CLOUD_NAME",
+      !process.env.CLOUDINARY_API_KEY && "CLOUDINARY_API_KEY",
+      !process.env.CLOUDINARY_API_SECRET && "CLOUDINARY_API_SECRET",
+    ].filter(Boolean);
+    console.error(`[media/upload-signature] Missing env vars: ${missing.join(", ")}`);
     return NextResponse.json(
-      { error: "Photo uploads aren't configured on this deployment yet" },
+      {
+        error: "Photo uploads aren't configured on this deployment yet",
+        ...(process.env.NODE_ENV !== "production" ? { missing } : {}),
+      },
       { status: 503 }
     );
   }
 
-  const timestamp = Math.floor(Date.now() / 1000);
-  const folder = `letters-to-my-love/${coupleId}`;
-  const signature = signCloudinaryUpload({ folder, timestamp });
+  try {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = `letters-to-my-love/${coupleId}`;
+    const signature = signCloudinaryUpload({ folder, timestamp });
 
-  return NextResponse.json({
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-    apiKey: process.env.CLOUDINARY_API_KEY,
-    timestamp,
-    folder,
-    signature,
-  });
+    return NextResponse.json({
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      apiKey: process.env.CLOUDINARY_API_KEY,
+      timestamp,
+      folder,
+      signature,
+    });
+  } catch (err) {
+    console.error("[media/upload-signature] Failed to sign upload:", err);
+    return NextResponse.json({ error: "Couldn't authorize the upload \u2014 check server logs" }, { status: 500 });
+  }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/lib/toast";
 
@@ -67,8 +67,41 @@ export function CreateOrJoin() {
 }
 
 export function WaitingForPartner({ inviteUrl }: { inviteUrl: string | null }) {
+  const router = useRouter();
   const [url, setUrl] = useState(inviteUrl);
   const [loading, setLoading] = useState(false);
+  const [partner, setPartner] = useState<{ name: string; imageUrl: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const res = await fetch("/api/couple");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data.couple?.partner) {
+          setPartner(data.couple.partner);
+        }
+      } catch {
+        // Silent - just try again on the next tick.
+      }
+    }
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!partner) return;
+    const t = setTimeout(() => {
+      router.push("/library");
+      router.refresh();
+    }, 1800);
+    return () => clearTimeout(t);
+  }, [partner, router]);
 
   async function copyLink() {
     if (!url) return;
@@ -91,16 +124,37 @@ export function WaitingForPartner({ inviteUrl }: { inviteUrl: string | null }) {
     }
   }
 
+  if (partner) {
+    return (
+      <div className="write-card" style={{ maxWidth: 480, margin: "0 auto", textAlign: "center" }}>
+        <div className="seal" style={{ position: "static", margin: "0 auto 16px" }}>
+          &#10084;
+        </div>
+        {partner.imageUrl && (
+          <img
+            src={partner.imageUrl}
+            alt=""
+            style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid var(--gold-line)", margin: "0 auto 12px" }}
+          />
+        )}
+        <h3 className="lc-title" style={{ fontSize: 26, marginBottom: 4 }}>
+          {partner.name} is here &#9825;
+        </h3>
+        <p className="section-sub" style={{ marginBottom: 0 }}>2 people in this space</p>
+      </div>
+    );
+  }
+
   return (
     <div className="write-card" style={{ maxWidth: 480, margin: "0 auto", textAlign: "center" }}>
       <div className="seal" style={{ position: "static", margin: "0 auto 16px" }}>
         &#10084;
       </div>
       <h3 className="lc-title" style={{ fontSize: 26, marginBottom: 6 }}>
-        Waiting for your partner
+        Waiting for your person to join&hellip; &#128140;
       </h3>
       <p className="section-sub" style={{ marginBottom: 20 }}>
-        Send them this invite link. Once they open it and accept, you&rsquo;ll both land in the same space.
+        Send them this invite link. This page updates the moment they accept.
       </p>
       <div
         style={{

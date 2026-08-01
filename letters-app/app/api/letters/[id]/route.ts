@@ -3,8 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { requireCoupleId } from "@/lib/couple";
 import { destroyCloudinaryAsset } from "@/lib/cloudinary";
-
-const MAX_PHOTOS = 12;
+import { parseIncomingMedia, MAX_ITEMS_PER_LETTER } from "@/lib/media";
 
 async function getVisibleLetter(id: string, userId: string, coupleId: string) {
   const letter = await prisma.letter.findUnique({ where: { id }, include: { media: true } });
@@ -81,17 +80,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     : [];
   const ownedRemoveIds = existing.media.filter((m) => removeIds.includes(m.id));
 
-  const rawNewMedia = Array.isArray(body.newMedia) ? body.newMedia : [];
-  const roomLeft = MAX_PHOTOS - (existing.media.length - ownedRemoveIds.length);
-  const newMedia = rawNewMedia
-    .filter((m: unknown): m is { url: string; publicId: string; caption?: string | null } =>
-      Boolean(m && typeof m === "object" && "url" in m && "publicId" in m)
-    )
-    .slice(0, Math.max(0, roomLeft));
+  const rawNewMedia = body.newMedia;
+  const roomLeft = MAX_ITEMS_PER_LETTER - (existing.media.length - ownedRemoveIds.length);
+  const newMedia = parseIncomingMedia(rawNewMedia, roomLeft);
 
   if (ownedRemoveIds.length > 0) {
     await prisma.media.deleteMany({ where: { id: { in: ownedRemoveIds.map((m) => m.id) } } });
-    await Promise.all(ownedRemoveIds.map((m) => destroyCloudinaryAsset(m.publicId)));
+    await Promise.all(
+      ownedRemoveIds.map((m) => destroyCloudinaryAsset(m.publicId, m.type === "IMAGE" ? "image" : "video"))
+    );
   }
 
   const updated = await prisma.letter.update({
@@ -100,12 +97,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...data,
       media: newMedia.length
         ? {
-            create: newMedia.map((m: { url: string; publicId: string; caption?: string }) => ({
+            create: newMedia.map((m) => ({
               uploaderId: userId,
-              type: "IMAGE",
+              type: m.type,
               url: m.url,
               publicId: m.publicId,
               caption: m.caption || null,
+              duration: m.duration ?? null,
             })),
           }
         : undefined,
@@ -131,6 +129,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   }
 
   await prisma.letter.delete({ where: { id: params.id } }); // Media cascades in the DB
-  await Promise.all(existing.media.map((m) => destroyCloudinaryAsset(m.publicId)));
+  await Promise.all(
+    existing.media.map((m) => destroyCloudinaryAsset(m.publicId, m.type === "IMAGE" ? "image" : "video"))
+  );
   return NextResponse.json({ ok: true });
 }

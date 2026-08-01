@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { requireCoupleId, unlockDueLetters } from "@/lib/couple";
-
-const MAX_PHOTOS = 12;
+import { parseIncomingMedia, MAX_ITEMS_PER_LETTER } from "@/lib/media";
 
 export async function GET() {
   const { userId } = await auth();
@@ -43,11 +42,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Letter content is required" }, { status: 400 });
   }
 
-  const media = Array.isArray(newMedia) ? newMedia.slice(0, MAX_PHOTOS) : [];
-  const validMedia = media.filter(
-    (m: unknown): m is { url: string; publicId: string; caption?: string | null; type?: string } =>
-      Boolean(m && typeof m === "object" && "url" in m && "publicId" in m)
-  );
+  const media = parseIncomingMedia(newMedia, MAX_ITEMS_PER_LETTER);
 
   // Always created as a draft - sending is a separate, explicit step via
   // POST /api/letters/[id]/send.
@@ -61,14 +56,15 @@ export async function POST(req: NextRequest) {
       mood: mood || "love",
       date: date ? new Date(date) : new Date(),
       status: "DRAFT",
-      media: validMedia.length
+      media: media.length
         ? {
-            create: validMedia.map((m) => ({
+            create: media.map((m) => ({
               uploaderId: userId,
-              type: "IMAGE",
+              type: m.type,
               url: m.url,
               publicId: m.publicId,
               caption: m.caption || null,
+              duration: m.duration ?? null,
             })),
           }
         : undefined,

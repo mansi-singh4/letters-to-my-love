@@ -24,7 +24,7 @@ type Letter = {
   scheduledFor: string | null;
   deliveredAt: string | null;
   openedAt: string | null;
-  media: { id: string; url: string; caption: string | null }[];
+  media: { id: string; url: string; caption: string | null; type: "IMAGE" | "AUDIO" | "VIDEO" }[];
 };
 
 type Person = { id: string; name: string; imageUrl: string };
@@ -205,12 +205,32 @@ export default function ReadingView({
         />
         {letter.media.length > 0 && (
           <div className="letter-gallery">
-            {letter.media.map((m) => (
-              <figure key={m.id}>
-                <img src={m.url} alt={m.caption || ""} onClick={() => setLightbox(m.url)} />
-                {m.caption && <figcaption>{m.caption}</figcaption>}
-              </figure>
-            ))}
+            {letter.media.map((m) => {
+              if (m.type === "IMAGE") {
+                return (
+                  <figure key={m.id}>
+                    <img src={m.url} alt={m.caption || ""} onClick={() => setLightbox(m.url)} />
+                    {m.caption && <figcaption>{m.caption}</figcaption>}
+                  </figure>
+                );
+              }
+              if (m.type === "VIDEO") {
+                return (
+                  <figure key={m.id} className="video-figure">
+                    <video src={m.url} controls />
+                    {m.caption && <figcaption>{m.caption}</figcaption>}
+                  </figure>
+                );
+              }
+              return (
+                <figure key={m.id} className="audio-figure">
+                  <div className="audio-card">
+                    <audio src={m.url} controls />
+                  </div>
+                  {m.caption && <figcaption>{m.caption}</figcaption>}
+                </figure>
+              );
+            })}
           </div>
         )}
       </div>

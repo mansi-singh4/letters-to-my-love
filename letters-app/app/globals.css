@@ -178,6 +178,26 @@ nav.bottom-nav a.active { background: var(--rose-gold); color: var(--warm-white)
 .photo-thumb .thumb-caption { width: 100%; border: none; background: rgba(255,255,255,0.85); font-family: var(--font-ui); font-size: 11px; padding: 4px 6px; }
 .photo-thumb .thumb-status { position: absolute; inset: 0; background: rgba(255,255,255,0.6); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--ink-soft); }
 .photo-count-pill { font-size: 11px; color: var(--ink-faint); margin-top: 6px; }
+
+.recording-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.recording-dot { width: 10px; height: 10px; border-radius: 50%; background: #e0455a; animation: recordPulse 1.1s ease-in-out infinite; }
+@keyframes recordPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.8); } }
+
+.audio-thumb { padding: 10px; }
+.audio-thumb audio { width: 100%; height: 32px; display: block; }
+.video-thumb video { width: 100%; height: 100px; object-fit: cover; display: block; }
+.photo-tray .audio-thumb, .photo-tray .video-thumb { grid-column: span 2; }
+@media (max-width: 480px) {
+  .photo-tray .audio-thumb, .photo-tray .video-thumb { grid-column: span 1; }
+}
+
+.letter-gallery video { width: 100%; height: 160px; object-fit: cover; display: block; background: #000; }
+.letter-gallery .audio-card { padding: 16px; }
+.letter-gallery .audio-card audio { width: 100%; }
+.letter-gallery figure.audio-figure, .letter-gallery figure.video-figure { grid-column: span 2; }
+@media (max-width: 480px) {
+  .letter-gallery figure.audio-figure, .letter-gallery figure.video-figure { grid-column: span 1; }
+}
 .read-controls { display: flex; gap: 10px; justify-content: center; margin-top: 22px; flex-wrap: wrap; }
 .read-controls button, .read-controls a { border: 1px solid var(--gold-line); background: var(--card-bg); padding: 8px 14px; border-radius: 12px; font-size: 13px; color: var(--ink-soft); cursor: pointer; text-decoration: none; }
 .read-controls button.on { background: var(--rose-gold); color: var(--warm-white); }

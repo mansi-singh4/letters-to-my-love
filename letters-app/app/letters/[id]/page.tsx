@@ -40,7 +40,7 @@ export default async function LetterPage({ params }: { params: { id: string } })
           scheduledFor: letter.scheduledFor ? letter.scheduledFor.toISOString() : null,
           deliveredAt: letter.deliveredAt ? letter.deliveredAt.toISOString() : null,
           openedAt: letter.openedAt ? letter.openedAt.toISOString() : null,
-          media: letter.media.map((m) => ({ id: m.id, url: m.url, caption: m.caption })),
+          media: letter.media.map((m) => ({ id: m.id, url: m.url, caption: m.caption, type: m.type })),
         }}
         shareUrl={letter.shareId ? `${base}/shared/${letter.shareId}` : null}
       />
