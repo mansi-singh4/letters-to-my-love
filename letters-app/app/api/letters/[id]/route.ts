@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { requireCoupleId } from "@/lib/couple";
+import { destroyCloudinaryAsset } from "@/lib/cloudinary";
 
-async function getOwnedLetter(id: string, userId: string) {
-  const letter = await prisma.letter.findUnique({ where: { id } });
-  if (!letter || letter.userId !== userId) return null;
+const MAX_PHOTOS = 12;
+
+async function getVisibleLetter(id: string, userId: string, coupleId: string) {
+  const letter = await prisma.letter.findUnique({ where: { id }, include: { media: true } });
+  if (!letter || letter.coupleId !== coupleId) return null;
+  // A partner's still-private draft/scheduled letter is invisible to
+  // anyone but its author, even within the same couple.
+  if (letter.authorId !== userId && (letter.status === "DRAFT" || letter.status === "SCHEDULED")) {
+    return null;
+  }
   return letter;
 }
 
@@ -12,7 +21,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const letter = await getOwnedLetter(params.id, userId);
+  const coupleId = await requireCoupleId(userId);
+  if (!coupleId) return NextResponse.json({ error: "No Couple Space yet" }, { status: 403 });
+
+  const letter = await getVisibleLetter(params.id, userId, coupleId);
   if (!letter) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(letter);
 }
@@ -21,10 +33,39 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const existing = await getOwnedLetter(params.id, userId);
-  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const coupleId = await requireCoupleId(userId);
+  if (!coupleId) return NextResponse.json({ error: "No Couple Space yet" }, { status: 403 });
+
+  const existing = await prisma.letter.findUnique({ where: { id: params.id }, include: { media: true } });
+  if (!existing || existing.coupleId !== coupleId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const body = await req.json();
+  const keys = Object.keys(body);
+  const onlyTogglingFavorite = keys.length > 0 && keys.every((k) => k === "favorite");
+
+  if (onlyTogglingFavorite) {
+    // Either partner may favorite a letter they can already see.
+    if (existing.authorId !== userId && (existing.status === "DRAFT" || existing.status === "SCHEDULED")) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    const updated = await prisma.letter.update({
+      where: { id: params.id },
+      data: { favorite: Boolean(body.favorite) },
+      include: { media: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // Any other field is a content edit: author-only, and only before delivery.
+  if (existing.authorId !== userId) {
+    return NextResponse.json({ error: "Only the author can edit this letter" }, { status: 403 });
+  }
+  if (existing.status === "SENT" || existing.status === "READ") {
+    return NextResponse.json({ error: "This letter has already been delivered and can't be edited" }, { status: 409 });
+  }
+
   const data: Record<string, unknown> = {};
   if (typeof body.recipient === "string") data.recipient = body.recipient.trim();
   if (typeof body.title === "string") data.title = body.title.trim();
@@ -33,7 +74,44 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (typeof body.date === "string") data.date = new Date(body.date);
   if (typeof body.favorite === "boolean") data.favorite = body.favorite;
 
-  const updated = await prisma.letter.update({ where: { id: params.id }, data });
+  // Photos: removeMediaIds must belong to this letter (never trust the id
+  // alone), newMedia is capped the same as on create.
+  const removeIds: string[] = Array.isArray(body.removeMediaIds)
+    ? body.removeMediaIds.filter((id: unknown) => typeof id === "string")
+    : [];
+  const ownedRemoveIds = existing.media.filter((m) => removeIds.includes(m.id));
+
+  const rawNewMedia = Array.isArray(body.newMedia) ? body.newMedia : [];
+  const roomLeft = MAX_PHOTOS - (existing.media.length - ownedRemoveIds.length);
+  const newMedia = rawNewMedia
+    .filter((m: unknown): m is { url: string; publicId: string; caption?: string | null } =>
+      Boolean(m && typeof m === "object" && "url" in m && "publicId" in m)
+    )
+    .slice(0, Math.max(0, roomLeft));
+
+  if (ownedRemoveIds.length > 0) {
+    await prisma.media.deleteMany({ where: { id: { in: ownedRemoveIds.map((m) => m.id) } } });
+    await Promise.all(ownedRemoveIds.map((m) => destroyCloudinaryAsset(m.publicId)));
+  }
+
+  const updated = await prisma.letter.update({
+    where: { id: params.id },
+    data: {
+      ...data,
+      media: newMedia.length
+        ? {
+            create: newMedia.map((m: { url: string; publicId: string; caption?: string }) => ({
+              uploaderId: userId,
+              type: "IMAGE",
+              url: m.url,
+              publicId: m.publicId,
+              caption: m.caption || null,
+            })),
+          }
+        : undefined,
+    },
+    include: { media: true },
+  });
   return NextResponse.json(updated);
 }
 
@@ -41,9 +119,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const existing = await getOwnedLetter(params.id, userId);
-  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const coupleId = await requireCoupleId(userId);
+  if (!coupleId) return NextResponse.json({ error: "No Couple Space yet" }, { status: 403 });
 
-  await prisma.letter.delete({ where: { id: params.id } });
+  const existing = await prisma.letter.findUnique({ where: { id: params.id }, include: { media: true } });
+  if (!existing || existing.coupleId !== coupleId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (existing.authorId !== userId) {
+    return NextResponse.json({ error: "Only the author can delete this letter" }, { status: 403 });
+  }
+
+  await prisma.letter.delete({ where: { id: params.id } }); // Media cascades in the DB
+  await Promise.all(existing.media.map((m) => destroyCloudinaryAsset(m.publicId)));
   return NextResponse.json({ ok: true });
 }

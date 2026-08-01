@@ -9,11 +9,13 @@ type Letter = {
   content: string;
   mood: string;
   date: string;
+  media: { id: string; url: string; caption: string | null }[];
 };
 
 export default function SharedReadingView({ letter }: { letter: Letter }) {
   const [handwrite, setHandwrite] = useState(false);
   const [fontSize, setFontSize] = useState(20);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   return (
     <div className="reading-wrap">
@@ -33,7 +35,24 @@ export default function SharedReadingView({ letter }: { letter: Letter }) {
           style={{ fontSize }}
           dangerouslySetInnerHTML={{ __html: letter.content }}
         />
+        {letter.media.length > 0 && (
+          <div className="letter-gallery">
+            {letter.media.map((m) => (
+              <figure key={m.id}>
+                <img src={m.url} alt={m.caption || ""} onClick={() => setLightbox(m.url)} />
+                {m.caption && <figcaption>{m.caption}</figcaption>}
+              </figure>
+            ))}
+          </div>
+        )}
       </div>
+
+      {lightbox && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="" />
+        </div>
+      )}
+
       <div className="read-controls">
         <button className={handwrite ? "on" : ""} onClick={() => setHandwrite((v) => !v)} type="button">
           Aa Handwriting

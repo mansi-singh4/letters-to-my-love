@@ -1,16 +1,25 @@
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getCoupleContext, unlockDueLetters } from "@/lib/couple";
 import { dailyQuote, formatDate, moodOf } from "@/lib/moods";
 
 export default async function LandingPage() {
   const { userId } = await auth();
+  const context = userId ? await getCoupleContext(userId) : null;
+  const spaceReady = Boolean(context?.partner);
 
   let onThisDay: Awaited<ReturnType<typeof prisma.letter.findMany>> = [];
-  if (userId) {
-    const all = await prisma.letter.findMany({ where: { userId } });
+  if (context && spaceReady) {
+    await unlockDueLetters(context.coupleId);
+    const visible = await prisma.letter.findMany({
+      where: {
+        coupleId: context.coupleId,
+        OR: [{ status: { in: ["SENT", "READ"] } }, { authorId: userId! }],
+      },
+    });
     const now = new Date();
-    onThisDay = all.filter((l) => {
+    onThisDay = visible.filter((l) => {
       const d = new Date(l.date);
       return (
         d.getMonth() === now.getMonth() &&
@@ -20,10 +29,15 @@ export default async function LandingPage() {
     });
   }
 
+  // Where the hero envelope / primary CTA should send people, depending on
+  // where they are in the account -> couple -> writing funnel.
+  const primaryHref = !userId ? "/sign-up" : spaceReady ? "/write" : "/space";
+  const primaryLabel = !userId ? "Get Started" : spaceReady ? "Write a Letter" : "Start Your Couple Space";
+
   return (
     <section className="view active">
       <div className="hero">
-        <Link href="/write" className="hero-envelope" aria-label="Write a letter">
+        <Link href={primaryHref} className="hero-envelope" aria-label={primaryLabel}>
           <div className="seal">&#10084;</div>
           <div className="env-flap" />
           <div className="env-body" />
@@ -32,14 +46,20 @@ export default async function LandingPage() {
           Every love deserves
           <br />a place to live forever.
         </h1>
-        <p className="sub">Write your heart. Keep every memory safe.</p>
+        <p className="sub">
+          {userId && context && !spaceReady
+            ? "You're almost there \u2014 finish setting up your shared space."
+            : "Write your heart. Keep every memory safe."}
+        </p>
         <div className="hero-actions">
-          <Link href="/write" className="btn btn-primary">
-            Write a Letter
+          <Link href={primaryHref} className="btn btn-primary">
+            {primaryLabel}
           </Link>
-          <Link href="/library" className="btn btn-ghost">
-            Read Memories
-          </Link>
+          {spaceReady && (
+            <Link href="/library" className="btn btn-ghost">
+              Read Memories
+            </Link>
+          )}
         </div>
       </div>
 

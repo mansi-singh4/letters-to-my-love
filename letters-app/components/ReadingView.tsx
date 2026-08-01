@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDate, moodOf } from "@/lib/moods";
+import { formatTimestamp } from "@/lib/format";
 import { showToast } from "@/lib/toast";
+import EnvelopeOpenReveal from "./EnvelopeOpenReveal";
+
+type LetterStatus = "DRAFT" | "SCHEDULED" | "SENT" | "READ";
 
 type Letter = {
   id: string;
@@ -15,17 +19,41 @@ type Letter = {
   date: string;
   favorite: boolean;
   shareId: string | null;
+  authorId: string;
+  status: LetterStatus;
+  scheduledFor: string | null;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  media: { id: string; url: string; caption: string | null }[];
 };
 
-export default function ReadingView({ letter, shareUrl }: { letter: Letter; shareUrl: string | null }) {
+type Person = { id: string; name: string; imageUrl: string };
+
+export default function ReadingView({
+  letter: initialLetter,
+  shareUrl,
+  currentUserId,
+  author,
+}: {
+  letter: Letter;
+  shareUrl: string | null;
+  currentUserId: string;
+  author: Person;
+}) {
   const router = useRouter();
+  const [letter, setLetter] = useState(initialLetter);
   const [favorite, setFavorite] = useState(letter.favorite);
   const [handwrite, setHandwrite] = useState(false);
   const [fontSize, setFontSize] = useState(20);
   const [progress, setProgress] = useState(0);
   const [share, setShare] = useState(shareUrl);
   const [shareLoading, setShareLoading] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+
+  const isAuthor = letter.authorId === currentUserId;
+  const shouldPlayOpenAnimation = !isAuthor && letter.status === "SENT";
 
   useEffect(() => {
     function onScroll() {
@@ -36,6 +64,17 @@ export default function ReadingView({ letter, shareUrl }: { letter: Letter; shar
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  async function markRead() {
+    try {
+      const res = await fetch(`/api/letters/${letter.id}/read`, { method: "POST" });
+      if (!res.ok) return;
+      const updated = await res.json();
+      setLetter((prev) => ({ ...prev, status: updated.status, openedAt: updated.openedAt }));
+    } catch {
+      // Non-critical - the letter still displays either way.
+    }
+  }
 
   async function toggleFavorite() {
     const next = !favorite;
@@ -90,7 +129,10 @@ export default function ReadingView({ letter, shareUrl }: { letter: Letter; shar
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this letter? This can't be undone.")) return;
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
     setDeleting(true);
     try {
       const res = await fetch(`/api/letters/${letter.id}`, { method: "DELETE" });
@@ -101,11 +143,21 @@ export default function ReadingView({ letter, shareUrl }: { letter: Letter; shar
     } catch {
       showToast("Couldn't delete right now \u2014 try again");
       setDeleting(false);
+      setConfirmingDelete(false);
     }
   }
 
-  return (
-    <div className="reading-wrap">
+  function statusLine(): string {
+    if (letter.status === "DRAFT") return "Draft \u2014 only you can see this";
+    if (letter.status === "SCHEDULED") {
+      return `Scheduled for ${letter.scheduledFor ? formatDate(letter.scheduledFor) : "later"} \u2014 only you can see this until then`;
+    }
+    if (letter.status === "READ" && letter.openedAt) return `Opened \u2764\uFE0F ${formatTimestamp(letter.openedAt)}`;
+    return "Delivered";
+  }
+
+  const content = (
+    <>
       <Link href="/library" className="reading-back">
         &#8592; Back to Library
       </Link>
@@ -129,7 +181,21 @@ export default function ReadingView({ letter, shareUrl }: { letter: Letter; shar
           </div>
           <div className="rd-title">{letter.title}</div>
           <div className="rd-meta">
-            To {letter.recipient} &middot; {formatDate(letter.date)}
+            {isAuthor ? "To" : "From"} {isAuthor ? letter.recipient : author.name} &middot; {formatDate(letter.date)}
+          </div>
+          <div className="lc-author" style={{ justifyContent: "center", marginTop: 8 }}>
+            {author.imageUrl && <img src={author.imageUrl} alt="" />}
+            <span className="lc-author-name">{isAuthor ? "You wrote this" : `Written by ${author.name}`}</span>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <span
+              className={
+                "status-pill " +
+                (letter.status === "DRAFT" ? "draft" : letter.status === "SCHEDULED" ? "scheduled" : letter.status === "READ" ? "read" : "sent")
+              }
+            >
+              {statusLine()}
+            </span>
           </div>
         </div>
         <div
@@ -137,7 +203,23 @@ export default function ReadingView({ letter, shareUrl }: { letter: Letter; shar
           style={{ fontSize }}
           dangerouslySetInnerHTML={{ __html: letter.content }}
         />
+        {letter.media.length > 0 && (
+          <div className="letter-gallery">
+            {letter.media.map((m) => (
+              <figure key={m.id}>
+                <img src={m.url} alt={m.caption || ""} onClick={() => setLightbox(m.url)} />
+                {m.caption && <figcaption>{m.caption}</figcaption>}
+              </figure>
+            ))}
+          </div>
+        )}
       </div>
+
+      {lightbox && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="" />
+        </div>
+      )}
 
       <div className="read-controls">
         <button className={handwrite ? "on" : ""} onClick={() => setHandwrite((v) => !v)} type="button">
@@ -152,20 +234,36 @@ export default function ReadingView({ letter, shareUrl }: { letter: Letter; shar
         <button className={favorite ? "on" : ""} onClick={toggleFavorite} type="button">
           {favorite ? "\u2764 Favorited" : "\u2661 Favorite"}
         </button>
-        <Link href={`/letters/${letter.id}/edit`}>Edit</Link>
-        {share ? (
-          <button onClick={revokeShare} disabled={shareLoading} type="button">
-            Revoke share link
-          </button>
-        ) : (
-          <button onClick={enableShare} disabled={shareLoading} type="button">
-            Get share link
+        {isAuthor && (letter.status === "DRAFT" || letter.status === "SCHEDULED") && (
+          <Link href={`/letters/${letter.id}/edit`}>Edit</Link>
+        )}
+        {isAuthor && (letter.status === "SENT" || letter.status === "READ") && (
+          <>
+            {share ? (
+              <button onClick={revokeShare} disabled={shareLoading} type="button">
+                Revoke share link
+              </button>
+            ) : (
+              <button onClick={enableShare} disabled={shareLoading} type="button">
+                Get share link
+              </button>
+            )}
+          </>
+        )}
+        {isAuthor && (
+          <button onClick={handleDelete} disabled={deleting} type="button">
+            {confirmingDelete ? "Tap again to confirm" : "Delete"}
           </button>
         )}
-        <button onClick={handleDelete} disabled={deleting} type="button">
-          Delete
-        </button>
       </div>
+    </>
+  );
+
+  return (
+    <div className="reading-wrap">
+      <EnvelopeOpenReveal play={shouldPlayOpenAnimation} onOpened={markRead}>
+        {content}
+      </EnvelopeOpenReveal>
     </div>
   );
 }

@@ -8,30 +8,106 @@ datasource db {
 }
 
 // There is no User table here on purpose: Clerk is the source of truth for
-// accounts. We only ever store Clerk's userId as a foreign key string, so a
-// letter is only ever readable/writable by the userId that created it
-// (enforced in every API route and server component, not just by the schema).
+// accounts. We only ever store Clerk's userId as a foreign key string.
+// Access control is enforced in every API route and server component by
+// checking couple membership (see lib/couple.ts) - never by trusting a
+// client-supplied id.
+
+// A Couple Space links exactly two Clerk users together. It's created by
+// the first partner and completed when the second partner redeems the
+// invite token. Once complete, inviteToken is cleared so the link can't be
+// reused - membership is then permanent (no leave/remove flow, by design).
+model Couple {
+  id          String   @id @default(cuid())
+  inviteToken String?  @unique
+  createdAt   DateTime @default(now())
+
+  members CoupleMember[]
+  letters Letter[]
+}
+
+// A user belongs to at most one Couple, ever (unique userId). This is what
+// "permanently linked" means in practice: there's no model for switching
+// spaces.
+model CoupleMember {
+  id       String   @id @default(cuid())
+  userId   String   @unique
+  coupleId String
+  joinedAt DateTime @default(now())
+
+  couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+
+  @@index([coupleId])
+}
+
+enum LetterStatus {
+  DRAFT     // only the author can see or edit it
+  SCHEDULED // sent by the author with a future scheduledFor; hidden from the
+            // partner and still editable by the author until it unlocks
+  SENT      // visible to both members; shown to the recipient as "Delivered"
+            // until they open it
+  READ      // the recipient has opened it (openedAt is set)
+}
+
 model Letter {
-  id        String   @id @default(cuid())
-  userId    String
+  id       String @id @default(cuid())
+  coupleId String
+  authorId String
 
   recipient String
   title     String
-  content   String   @db.Text
+  content   String @db.Text
   mood      String
   date      DateTime
 
-  favorite  Boolean  @default(false)
-  isDraft   Boolean  @default(false)
+  status       LetterStatus @default(DRAFT)
+  scheduledFor DateTime?
+  deliveredAt  DateTime?
+  openedAt     DateTime?
+
+  favorite Boolean @default(false)
 
   // Null = not shared. Set = a secret, unguessable token that grants
-  // read-only public access at /shared/[shareId]. Clearing it revokes access.
-  shareId   String?  @unique
+  // read-only public access at /shared/[shareId]. Clearing it revokes
+  // access. Only SENT/READ letters may be shared (enforced in the route).
+  shareId String? @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId])
-  @@index([userId, favorite])
-  @@index([userId, mood])
+  couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  media  Media[]
+
+  @@index([coupleId])
+  @@index([coupleId, status])
+  @@index([coupleId, favorite])
+  @@index([coupleId, mood])
+  @@index([authorId])
+}
+
+enum MediaType {
+  IMAGE
+  AUDIO // reserved for the voice-notes phase
+  VIDEO // reserved for the video phase
+}
+
+// A single attached memory (photo, and later voice/video) on a letter.
+// Only metadata lives here - the actual file sits in Cloudinary. uploaderId
+// is always the letter's author right now (only the composer can attach
+// media), kept as its own field since a shared space could someday allow
+// either partner to attach to a joint letter.
+model Media {
+  id         String    @id @default(cuid())
+  letterId   String
+  uploaderId String
+  type       MediaType
+  url        String
+  publicId   String
+  caption    String?
+  duration   Int? // seconds - unused until voice/video ships
+  createdAt  DateTime  @default(now())
+
+  letter Letter @relation(fields: [letterId], references: [id], onDelete: Cascade)
+
+  @@index([letterId])
 }

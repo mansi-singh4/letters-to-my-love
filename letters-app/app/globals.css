@@ -112,6 +112,14 @@ nav.bottom-nav a.active { background: var(--rose-gold); color: var(--warm-white)
 .lc-to { font-size: 12px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
 .lc-preview { font-family: var(--font-serif); font-size: 14.5px; color: var(--ink-soft); margin-top: 10px; flex: 1; line-height: 1.5; }
 .lc-date { font-size: 11px; color: var(--ink-faint); margin-top: 12px; }
+.lc-author { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.lc-author img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; border: 1px solid var(--gold-line); }
+.lc-author-name { font-size: 11px; color: var(--ink-soft); font-weight: 600; }
+.status-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; margin-top: 8px; }
+.status-pill.draft { background: var(--gold-line); color: var(--ink-soft); }
+.status-pill.scheduled { background: var(--lavender); color: var(--rose-gold-deep); }
+.status-pill.sent { background: var(--blush); color: var(--rose-gold-deep); }
+.status-pill.read { background: var(--rose-gold); color: var(--warm-white); }
 
 .empty-state { text-align: center; padding: 60px 20px; color: var(--ink-soft); grid-column: 1 / -1; }
 .empty-state .ic { font-size: 44px; margin-bottom: 14px; }
@@ -149,6 +157,27 @@ nav.bottom-nav a.active { background: var(--rose-gold); color: var(--warm-white)
 .rd-body { font-family: var(--font-serif); font-size: 20px; line-height: 2; color: var(--ink); }
 .rd-body.handwrite { font-family: var(--font-display); font-size: 26px; line-height: 1.8; }
 .rd-body p { margin-bottom: 1em; }
+
+.letter-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 26px; }
+.letter-gallery figure { margin: 0; border-radius: 12px; overflow: hidden; background: var(--card-bg); border: 1px solid var(--gold-line); box-shadow: var(--shadow); }
+.letter-gallery img { width: 100%; height: 160px; object-fit: cover; display: block; cursor: zoom-in; transition: transform 0.3s ease; }
+.letter-gallery img:hover { transform: scale(1.03); }
+.letter-gallery figcaption { font-family: var(--font-serif); font-style: italic; font-size: 13px; color: var(--ink-soft); padding: 8px 10px; }
+
+.lightbox { position: fixed; inset: 0; z-index: 250; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; padding: 30px; cursor: zoom-out; }
+.lightbox img { max-width: 100%; max-height: 85vh; border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+
+.memory-toolbar { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.memory-btn { border: 1.5px dashed var(--gold-line); background: transparent; color: var(--rose-gold-deep); padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.25s; }
+.memory-btn:hover { background: var(--blush); border-style: solid; }
+
+.photo-tray { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin-top: 14px; }
+.photo-thumb { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--gold-line); background: var(--paper); }
+.photo-thumb img { width: 100%; height: 100px; object-fit: cover; display: block; }
+.photo-thumb .thumb-remove { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.55); color: #fff; border: none; font-size: 13px; line-height: 1; cursor: pointer; }
+.photo-thumb .thumb-caption { width: 100%; border: none; background: rgba(255,255,255,0.85); font-family: var(--font-ui); font-size: 11px; padding: 4px 6px; }
+.photo-thumb .thumb-status { position: absolute; inset: 0; background: rgba(255,255,255,0.6); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--ink-soft); }
+.photo-count-pill { font-size: 11px; color: var(--ink-faint); margin-top: 6px; }
 .read-controls { display: flex; gap: 10px; justify-content: center; margin-top: 22px; flex-wrap: wrap; }
 .read-controls button, .read-controls a { border: 1px solid var(--gold-line); background: var(--card-bg); padding: 8px 14px; border-radius: 12px; font-size: 13px; color: var(--ink-soft); cursor: pointer; text-decoration: none; }
 .read-controls button.on { background: var(--rose-gold); color: var(--warm-white); }

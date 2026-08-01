@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MOODS, formatDate, moodOf, stripHtml } from "@/lib/moods";
+import { formatTimestamp } from "@/lib/format";
 import { showToast } from "@/lib/toast";
+
+type LetterStatus = "DRAFT" | "SCHEDULED" | "SENT" | "READ";
 
 type Letter = {
   id: string;
@@ -15,18 +18,53 @@ type Letter = {
   date: string;
   favorite: boolean;
   createdAt: string;
+  authorId: string;
+  status: LetterStatus;
+  scheduledFor: string | null;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  photoCount: number;
 };
 
-export default function LibraryGrid({ letters: initial }: { letters: Letter[] }) {
+type Author = { name: string; imageUrl: string };
+
+function StatusPill({ letter, isMine }: { letter: Letter; isMine: boolean }) {
+  if (letter.status === "DRAFT") return <span className="status-pill draft">Draft</span>;
+  if (letter.status === "SCHEDULED") {
+    return (
+      <span className="status-pill scheduled">
+        Arrives {letter.scheduledFor ? formatDate(letter.scheduledFor) : "soon"}
+      </span>
+    );
+  }
+  if (letter.status === "READ") {
+    return <span className="status-pill read">{isMine ? "Opened" : "Read"}</span>;
+  }
+  return <span className="status-pill sent">Delivered</span>;
+}
+
+export default function LibraryGrid({
+  letters: initial,
+  authors,
+  currentUserId,
+}: {
+  letters: Letter[];
+  authors: Record<string, Author>;
+  currentUserId: string;
+}) {
   const router = useRouter();
   const [letters, setLetters] = useState(initial);
   const [search, setSearch] = useState("");
   const [moodFilter, setMoodFilter] = useState("");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [favOnly, setFavOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(false);
 
   const filtered = useMemo(() => {
     let list = letters.filter((l) => {
+      if (mineOnly) {
+        if (l.authorId !== currentUserId || (l.status !== "DRAFT" && l.status !== "SCHEDULED")) return false;
+      }
       if (favOnly && !l.favorite) return false;
       if (moodFilter && l.mood !== moodFilter) return false;
       if (search) {
@@ -41,7 +79,7 @@ export default function LibraryGrid({ letters: initial }: { letters: Letter[] })
         : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     return list;
-  }, [letters, search, moodFilter, sort, favOnly]);
+  }, [letters, search, moodFilter, sort, favOnly, mineOnly, currentUserId]);
 
   async function toggleFavorite(id: string, next: boolean) {
     setLetters((prev) => prev.map((l) => (l.id === id ? { ...l, favorite: next } : l)));
@@ -59,11 +97,12 @@ export default function LibraryGrid({ letters: initial }: { letters: Letter[] })
   }
 
   function pickRandom() {
-    if (letters.length === 0) {
-      showToast("Write a letter first");
+    const readable = letters.filter((l) => l.status === "SENT" || l.status === "READ");
+    if (readable.length === 0) {
+      showToast("No delivered letters yet");
       return;
     }
-    const pick = letters[Math.floor(Math.random() * letters.length)];
+    const pick = readable[Math.floor(Math.random() * readable.length)];
     router.push(`/letters/${pick.id}`);
   }
 
@@ -94,19 +133,36 @@ export default function LibraryGrid({ letters: initial }: { letters: Letter[] })
         >
           &#9825; Favorites
         </button>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => setMineOnly((v) => !v)}
+          style={mineOnly ? { background: "var(--rose-gold)", color: "var(--warm-white)" } : {}}
+        >
+          &#9998; Drafts &amp; Scheduled
+        </button>
       </div>
 
       <div className="grid">
-        {filtered.length === 0 && (
+        {filtered.length === 0 && letters.length === 0 && (
           <div className="empty-state">
             <div className="ic">&#128140;</div>
             <h3>No memories yet</h3>
             <p>Write your first letter and it&rsquo;ll live here, safe and sound.</p>
           </div>
         )}
+        {filtered.length === 0 && letters.length > 0 && (
+          <div className="empty-state">
+            <div className="ic">&#128269;</div>
+            <h3>No letters match</h3>
+            <p>Try a different search term, mood, or filter.</p>
+          </div>
+        )}
         {filtered.map((l) => {
           const preview = stripHtml(l.content).slice(0, 110);
           const m = moodOf(l.mood);
+          const author = authors[l.authorId];
+          const isMine = l.authorId === currentUserId;
           return (
             <Link key={l.id} href={`/letters/${l.id}`} className="letter-card">
               <div className="lc-top">
@@ -128,7 +184,17 @@ export default function LibraryGrid({ letters: initial }: { letters: Letter[] })
                 {preview}
                 {preview.length >= 110 ? "\u2026" : ""}
               </div>
-              <div className="lc-date">{formatDate(l.date)}</div>
+              {author && (
+                <div className="lc-author">
+                  {author.imageUrl && <img src={author.imageUrl} alt="" />}
+                  <span className="lc-author-name">{isMine ? "You" : author.name}</span>
+                </div>
+              )}
+              <StatusPill letter={l} isMine={isMine} />
+              <div className="lc-date">
+                {l.openedAt ? formatTimestamp(l.openedAt) : formatDate(l.date)}
+                {l.photoCount > 0 && <span> &middot; &#128247; {l.photoCount}</span>}
+              </div>
             </Link>
           );
         })}
